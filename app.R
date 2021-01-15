@@ -65,16 +65,22 @@ server <- function(input, output) {
         paste0("Cases:",today_cases()$newCasesByPublishDate,
                "<br>Rate:",today_cases()$newCasesByPublishDateRollingRateDay)
     })
-    output$utla_table <-renderTable({utla_cases()})
+    output$utla_table <-renderTable({mutate(utla_cases(),
+                                            date=as.character(date))})
     
     # BUTTON to LOAD IN NEW DATA - then process accordingly
     observeEvent(input$refresh, {
         r <- GET('https://api.coronavirus.data.gov.uk/v2/data?areaType=utla&metric=newCasesByPublishDate&metric=newCasesByPublishDateRollingRate&metric=newCasesByPublishDateRollingSum&metric=newCasesBySpecimenDate&metric=newCasesBySpecimenDateRollingRate&format=csv')
-        covid_cases <- content(r) %>% 
+        covid_cases <<- content(r) %>% 
+            group_by(areaName) %>% 
+            arrange(areaName,date) %>% 
             mutate(newCasesByPublishDateRollingRateDay=newCasesByPublishDateRollingRate / 7,
                    newCasesBySpecimenDateRollingRateDay=newCasesBySpecimenDateRollingRate / 7,
                    utlaPop = newCasesByPublishDateRollingSum / newCasesByPublishDateRollingRate,
-                   newCasesByPublishDatePer100=newCasesByPublishDate/utlaPop)
+                   newCasesByPublishDatePer100=newCasesByPublishDate/utlaPop,
+                   newCasesBySpecimenDatePer100=newCasesBySpecimenDate/utlaPop,
+                   newCasesByPublishDatePercentChangeDay=(newCasesByPublishDateRollingRate-lag(newCasesByPublishDateRollingRate,1))/lag(newCasesByPublishDateRollingRate,1),
+                   newCasesByPublishDatePercentChangeWeek=(newCasesByPublishDateRollingRate-lag(newCasesByPublishDateRollingRate,7))/lag(newCasesByPublishDateRollingRate,7))
         write_csv(covid_cases,"data/covid_cases.csv")
     })
 }
