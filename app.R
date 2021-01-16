@@ -40,7 +40,10 @@ ui <- fluidPage(
         
         # Show a plot of the generated distribution
         mainPanel(
-            textOutput("summary_stats"),
+            textOutput("today_cases"),
+            textOutput("today_rate"),
+            textOutput("change_yesterday"),
+            textOutput('change_lastweek'),
             plotOutput("case_plot"),
             tableOutput("utla_table")
         )
@@ -61,9 +64,19 @@ server <- function(input, output) {
             geom_line(aes(y=newCasesByPublishDateRollingRateDay)) +   
             geom_point(aes(y=newCasesByPublishDateRollingRateDay))
     })
-    output$summary_stats <- renderText({
-        paste0("Cases:",today_cases()$newCasesByPublishDate,
-               "<br>Rate:",today_cases()$newCasesByPublishDateRollingRateDay)
+    output$today_cases <- renderText({
+        sprintf("Cases: %d",today_cases()$newCasesByPublishDate)
+    })
+    output$today_rate <- renderText({
+        sprintf("Rate: %6.1f",today_cases()$newCasesByPublishDateRollingRateDay)
+    })
+    output$change_yesterday <- renderText({
+        sprintf("Rate change from yesterday: %5.1f %%",
+                100*today_cases()$newCasesByPublishDatePercentChangeDay)
+    })
+    output$change_lastweek <- renderText({
+        sprintf("Rate change from last week: %5.1f %%",
+                100*today_cases()$newCasesByPublishDatePercentChangeWeek)
     })
     output$utla_table <-renderTable({mutate(utla_cases(),
                                             date=as.character(date))})
