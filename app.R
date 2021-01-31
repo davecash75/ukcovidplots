@@ -30,7 +30,7 @@ ui <- fluidPage(
             dateRangeInput("date_range","Range for plots:",
                            min="2020-01-05",
                            max=Sys.Date(),
-                           start="2020-10-01",
+                           start="2020-11-01",
                            end=Sys.Date()),
             radioButtons("date_type","Choose Date Type:",
                          choices=c("Publish Date" = "pub", 
@@ -55,14 +55,20 @@ server <- function(input, output) {
     utla_cases <- reactive({filter(covid_cases,areaName==input$utla) %>% 
             select(-(areaType:areaName)) %>% 
             arrange(desc(date)) })
+    #TODO: Switch to most recent date depending on specimen or pub date
     today_cases <- reactive({head(utla_cases(),1)})
+    # TODO: Switch plot based on specimen date or pub date
+    # TODO: Add London and National Trend lines
+    # TODO: Make interactive
     output$case_plot <- renderPlot({
         ggplot(filter(utla_cases(), 
                       date >= input$date_range[1],
                       date <= input$date_range[2]),aes(x=date)) + 
             geom_col(aes(y=newCasesByPublishDatePer100),color="purple") + 
             geom_line(aes(y=newCasesByPublishDateRollingRateDay)) +   
-            geom_point(aes(y=newCasesByPublishDateRollingRateDay))
+            geom_point(aes(y=newCasesByPublishDateRollingRateDay)) + 
+            scale_x_date("Date",date_breaks="1 week") + 
+            theme(axis.text.x=element_text(angle=90)) 
     })
     output$today_cases <- renderText({
         sprintf("Cases: %d",today_cases()$newCasesByPublishDate)
@@ -78,10 +84,12 @@ server <- function(input, output) {
         sprintf("Rate change from last week: %5.1f %%",
                 100*today_cases()$newCasesByPublishDatePercentChangeWeek)
     })
+    #TODO: Clean up table
     output$utla_table <-renderTable({mutate(utla_cases(),
                                             date=as.character(date))})
     
     # BUTTON to LOAD IN NEW DATA - then process accordingly
+    # TODO: Grab national and London data 
     observeEvent(input$refresh, {
         r <- GET('https://api.coronavirus.data.gov.uk/v2/data?areaType=utla&metric=newCasesByPublishDate&metric=newCasesByPublishDateRollingRate&metric=newCasesByPublishDateRollingSum&metric=newCasesBySpecimenDate&metric=newCasesBySpecimenDateRollingRate&format=csv')
         covid_cases <<- content(r) %>% 
