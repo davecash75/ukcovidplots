@@ -55,7 +55,6 @@ ui <- fluidPage(
 server <- function(input, output) {
     utla_cases <- reactive({ cases_by_utla %>% 
             filter(areaName==input$utla) %>% 
-            select(-(areaType:areaName)) %>% 
             arrange(date) %>% 
             mutate(area_pop = newCasesByPublishDateRollingSum / 
                        newCasesByPublishDateRollingRate,
@@ -66,19 +65,20 @@ server <- function(input, output) {
                    new_cases_change_week = (new_cases_rate_day-lag(new_cases_rate_day,7))
                    /lag(new_cases_rate_day,7),
                    new_cases_per_100=newCasesByPublishDate/area_pop) %>% 
-            select(date,starts_with("new_cases")) })
+            select(date,areaName,starts_with("new_cases")) })
     uk_plot_cases <- reactive({uk_cases %>% 
             arrange(date) %>% 
             mutate(area_pop = newCasesByPublishDateRollingSum / 
                        newCasesByPublishDateRollingRate,
                    new_cases=newCasesByPublishDate,
+                   new_cases_sum=newCasesByPublishDateRollingSum,
                    new_cases_rate_day=newCasesByPublishDateRollingRate / 7,
                    new_cases_change_day = (new_cases_rate_day-lag(new_cases_rate_day,1))
                    /lag(new_cases_rate_day,1),
                    new_cases_change_week = (new_cases_rate_day-lag(new_cases_rate_day,7))
                    /lag(new_cases_rate_day,7),
                    new_cases_per_100=newCasesByPublishDate/area_pop) %>% 
-            select(date,starts_with("new_cases")) })
+            select(date,areaName,starts_with("new_cases")) })
     london_plot_cases <- reactive({london_cases %>% 
             arrange(date) %>% 
             mutate(area_pop = newCasesByPublishDateRollingSum / 
@@ -90,31 +90,24 @@ server <- function(input, output) {
                    new_cases_change_week = (new_cases_rate_day-lag(new_cases_rate_day,7))
                    /lag(new_cases_rate_day,7),
                    new_cases_per_100=newCasesByPublishDate/area_pop) %>% 
-            select(date,starts_with("new_cases")) })
+            select(date,areaName,starts_with("new_cases")) })
     #TODO: Switch to most recent date depending on specimen or pub date
     today_cases <- reactive({tail(utla_cases(),1)})
     # TODO: Switch plot based on specimen date or pub date
-    # TODO: Add London and National Trend lines
     # TODO: Make interactive
     output$case_plot <- renderPlot({
-        ggplot(filter(utla_cases(), 
-                      date >= input$date_range[1],
-                      date <= input$date_range[2]),aes(x=date)) + 
-            geom_col(aes(y=new_cases_per_100),color="purple") + 
-            geom_line(aes(y=new_cases_rate_day)) +   
-            geom_point(aes(y=new_cases_rate_day)) + 
-            geom_line(data=filter(uk_plot_cases(), 
-                                  date >= input$date_range[1],
-                                  date <= input$date_range[2]),
-                      mapping=aes(x=date,y=new_cases_rate_day),
-                      colour="green") + 
-            geom_line(data=filter(london_plot_cases(), 
-                                  date >= input$date_range[1],
-                                  date <= input$date_range[2]),
-                      mapping=aes(x=date,y=new_cases_rate_day),
-                      colour="yellow") + 
+        bind_rows(utla_cases(),uk_plot_cases(),london_plot_cases()) %>% 
+            filter(date >= input$date_range[1],
+                   date <= input$date_range[2]) %>% 
+        ggplot(aes(x=date)) + 
+            geom_col(data= function(x) { filter(x, areaName==input$utla) },
+                     aes(y=new_cases_per_100),color="purple",alpha=0.5) + 
+            geom_line(aes(y=new_cases_rate_day,colour=areaName)) +   
             scale_x_date("Date",date_breaks="1 week") + 
-            theme(axis.text.x=element_text(angle=90)) 
+            labs(y="New cases per 100k population",
+                 x="Date") + 
+            theme(axis.text.x=element_text(angle=90),
+                  legend.position="bottom") 
     })
     output$today_cases <- renderText({
         sprintf("Cases: %d",today_cases()$new_cases)
