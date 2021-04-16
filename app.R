@@ -51,77 +51,76 @@ ui <- fluidPage(
     )
 )
 
+setup_table <-function(x) {
+    x %>% 
+        arrange(date) %>% 
+        mutate(area_pop = newCasesByPublishDateRollingSum / 
+                   newCasesByPublishDateRollingRate,
+               pub_new_cases=newCasesByPublishDate,
+               pub_new_cases_rate_day=newCasesByPublishDateRollingRate / 7,
+               pub_new_cases_change_day = (pub_new_cases_rate_day-lag(pub_new_cases_rate_day,1))
+               /lag(pub_new_cases_rate_day,1),
+               pub_new_cases_change_week = (pub_new_cases_rate_day-lag(pub_new_cases_rate_day,7))
+               /lag(pub_new_cases_rate_day,7),
+               pub_new_cases_per_100=newCasesByPublishDate/area_pop,
+               spec_new_cases=newCasesBySpecimenDate,
+               spec_new_cases_rate_day=newCasesBySpecimenDateRollingRate / 7,
+               spec_new_cases_change_day = (spec_new_cases_rate_day-lag(spec_new_cases_rate_day,1))
+               /lag(spec_new_cases_rate_day,1),
+               spec_new_cases_change_week = (spec_new_cases_rate_day-lag(spec_new_cases_rate_day,7))
+               /lag(spec_new_cases_rate_day,7),
+               spec_new_cases_per_100=newCasesBySpecimenDate/area_pop) %>% 
+        select(date,areaName,contains("new_cases"))
+}
 # Define server logic required to draw a histogram
 server <- function(input, output) {
-    utla_cases <- reactive({ cases_by_utla %>% 
-            filter(areaName==input$utla) %>% 
-            arrange(date) %>% 
-            mutate(area_pop = newCasesByPublishDateRollingSum / 
-                       newCasesByPublishDateRollingRate,
-                   new_cases=newCasesByPublishDate,
-                   new_cases_rate_day=newCasesByPublishDateRollingRate / 7,
-                   new_cases_change_day = (new_cases_rate_day-lag(new_cases_rate_day,1))
-                                           /lag(new_cases_rate_day,1),
-                   new_cases_change_week = (new_cases_rate_day-lag(new_cases_rate_day,7))
-                   /lag(new_cases_rate_day,7),
-                   new_cases_per_100=newCasesByPublishDate/area_pop) %>% 
-            select(date,areaName,starts_with("new_cases")) })
-    uk_plot_cases <- reactive({uk_cases %>% 
-            arrange(date) %>% 
-            mutate(area_pop = newCasesByPublishDateRollingSum / 
-                       newCasesByPublishDateRollingRate,
-                   new_cases=newCasesByPublishDate,
-                   new_cases_sum=newCasesByPublishDateRollingSum,
-                   new_cases_rate_day=newCasesByPublishDateRollingRate / 7,
-                   new_cases_change_day = (new_cases_rate_day-lag(new_cases_rate_day,1))
-                   /lag(new_cases_rate_day,1),
-                   new_cases_change_week = (new_cases_rate_day-lag(new_cases_rate_day,7))
-                   /lag(new_cases_rate_day,7),
-                   new_cases_per_100=newCasesByPublishDate/area_pop) %>% 
-            select(date,areaName,starts_with("new_cases")) })
-    london_plot_cases <- reactive({london_cases %>% 
-            arrange(date) %>% 
-            mutate(area_pop = newCasesByPublishDateRollingSum / 
-                       newCasesByPublishDateRollingRate,
-                   new_cases=newCasesByPublishDate,
-                   new_cases_rate_day=newCasesByPublishDateRollingRate / 7,
-                   new_cases_change_day = (new_cases_rate_day-lag(new_cases_rate_day,1))
-                   /lag(new_cases_rate_day,1),
-                   new_cases_change_week = (new_cases_rate_day-lag(new_cases_rate_day,7))
-                   /lag(new_cases_rate_day,7),
-                   new_cases_per_100=newCasesByPublishDate/area_pop) %>% 
-            select(date,areaName,starts_with("new_cases")) })
+    utla_cases <- reactive({ setup_table(filter(cases_by_utla,
+                                                areaName==input$utla)) })
+    uk_plot_cases <- reactive({ setup_table(uk_cases) })
+    london_plot_cases <- reactive({ setup_table(london_cases) })
     #TODO: Switch to most recent date depending on specimen or pub date
     today_cases <- reactive({tail(utla_cases(),1)})
     # TODO: Switch plot based on specimen date or pub date
     # TODO: Make interactive
     output$case_plot <- renderPlot({
-        bind_rows(utla_cases(),uk_plot_cases(),london_plot_cases()) %>% 
+        combined <- bind_rows(utla_cases(),
+                              uk_plot_cases(),
+                              london_plot_cases()) %>% 
             filter(date >= input$date_range[1],
-                   date <= input$date_range[2]) %>% 
-        ggplot(aes(x=date)) + 
-            geom_col(data= function(x) { filter(x, areaName==input$utla) },
-                     aes(y=new_cases_per_100),color="purple",alpha=0.5) + 
-            geom_line(aes(y=new_cases_rate_day,colour=areaName)) +   
-            scale_x_date("Date",date_breaks="1 week") + 
+                   date <= input$date_range[2])
+        if (input$date_type == "pub") {
+            plt <- ggplot(data=combined,aes(x=date)) + 
+                geom_col(data=combined %>% filter(areaName==input$utla),
+                         aes(y=pub_new_cases_per_100),alpha=0.5) + 
+                geom_line(aes(y=pub_new_cases_rate_day, 
+                          colour=areaName))
+        }
+        else {
+            plt <- ggplot(data=combined,aes(x=date)) + 
+                geom_col(data=combined %>% filter(areaName==input$utla),
+                         aes(y=spec_new_cases_per_100),alpha=0.5) + 
+                geom_line(aes(y=spec_new_cases_rate_day, 
+                          colour=areaName))
+        }
+        plt + scale_x_date("Date",date_breaks="1 week") + 
             labs(y="New cases per 100k population",
-                 x="Date") + 
+                 x="Date") + theme_minimal() +
             theme(axis.text.x=element_text(angle=90),
                   legend.position="bottom") 
     })
     output$today_cases <- renderText({
-        sprintf("Cases: %d",today_cases()$new_cases)
+        sprintf("Cases: %d",today_cases()$pub_new_cases)
     })
     output$today_rate <- renderText({
-        sprintf("Rate: %6.1f",today_cases()$new_cases_rate_day)
+        sprintf("Rate: %6.1f",today_cases()$pub_new_cases_rate_day)
     })
     output$change_yesterday <- renderText({
         sprintf("Rate change from yesterday: %5.1f %%",
-                100*today_cases()$new_cases_change_day)
+                100*today_cases()$pub_new_cases_change_day)
     })
     output$change_lastweek <- renderText({
         sprintf("Rate change from last week: %5.1f %%",
-                100*today_cases()$new_cases_change_week)
+                100*today_cases()$pub_new_cases_change_week)
     })
     #TODO: Clean up table
     output$utla_table <-renderTable({utla_cases() %>% 
