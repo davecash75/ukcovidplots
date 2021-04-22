@@ -8,6 +8,7 @@
 #
 
 library(shiny)
+library(DT)
 library(tidyverse,warn.conflicts = FALSE)
 library(httr)
 cases_by_utla <- read_csv('data/utla_cases.csv')
@@ -47,7 +48,7 @@ ui <- fluidPage(
             textOutput("change_yesterday"),
             textOutput('change_lastweek'),
             plotOutput("case_plot"),
-            dataTableOutput("utla_table")
+            DTOutput("utla_table")
         )
     )
 )
@@ -58,19 +59,19 @@ setup_table <-function(df) {
         mutate(area_pop = newCasesByPublishDateRollingSum / 
                    newCasesByPublishDateRollingRate,
                pub_new_cases=newCasesByPublishDate,
-               pub_new_cases_rate_day=newCasesByPublishDateRollingRate / 7,
-               pub_new_cases_change_day = (pub_new_cases_rate_day-lag(pub_new_cases_rate_day,1))
-               /lag(pub_new_cases_rate_day,1),
-               pub_new_cases_change_week = (pub_new_cases_rate_day-lag(pub_new_cases_rate_day,7))
-               /lag(pub_new_cases_rate_day,7),
-               pub_new_cases_per_100=newCasesByPublishDate/area_pop,
+               pub_new_cases_per_100=round(newCasesByPublishDate/area_pop,digits=2),
+               pub_new_cases_rate_day=round(newCasesByPublishDateRollingRate / 7,digits=2),
+               pub_new_cases_change_day = round(100*(pub_new_cases_rate_day-lag(pub_new_cases_rate_day,1))
+               /lag(pub_new_cases_rate_day,1),digits=2),
+               pub_new_cases_change_week = round(100*(pub_new_cases_rate_day-lag(pub_new_cases_rate_day,7))
+               /lag(pub_new_cases_rate_day,7),digits=2),
                spec_new_cases=newCasesBySpecimenDate,
-               spec_new_cases_rate_day=newCasesBySpecimenDateRollingRate / 7,
-               spec_new_cases_change_day = (spec_new_cases_rate_day-lag(spec_new_cases_rate_day,1))
-               /lag(spec_new_cases_rate_day,1),
-               spec_new_cases_change_week = (spec_new_cases_rate_day-lag(spec_new_cases_rate_day,7))
-               /lag(spec_new_cases_rate_day,7),
-               spec_new_cases_per_100=newCasesBySpecimenDate/area_pop) %>% 
+               spec_new_cases_per_100=round(newCasesBySpecimenDate/area_pop,digits=2), 
+               spec_new_cases_rate_day=round(newCasesBySpecimenDateRollingRate / 7,digits=2),
+               spec_new_cases_change_day = round(100*(spec_new_cases_rate_day-lag(spec_new_cases_rate_day,1))
+               /lag(spec_new_cases_rate_day,1),digits=2),
+               spec_new_cases_change_week = round(100*(spec_new_cases_rate_day-lag(spec_new_cases_rate_day,7))
+               /lag(spec_new_cases_rate_day,7),digits=2)) %>% 
         select(date,areaName,contains("new_cases"))
 }
 
@@ -124,21 +125,34 @@ server <- function(input, output) {
     })
     output$change_yesterday <- renderText({
         sprintf("Rate change from yesterday: %5.1f %%",
-                100*today_cases()$new_cases_change_day)
+                today_cases()$new_cases_change_day)
     })
     output$change_lastweek <- renderText({
         sprintf("Rate change from last week: %5.1f %%",
-                100*today_cases()$new_cases_change_week)
+                today_cases()$new_cases_change_week)
     })
     #TODO: Clean up table
-    output$utla_table <-renderDataTable({utla_cases() %>%
+    output$utla_table <-renderDT({utla_cases() %>%
             select(-areaName) %>% 
             arrange(desc(date)) %>%
             select(c(date,starts_with(input$date_type))) %>% 
             rename_with(~gsub(paste0(input$date_type,"_"),"",.),
                         starts_with(input$date_type)) %>% 
             drop_na(new_cases_rate_day) %>% 
-            mutate(date=as.character(date))})
+            mutate(date=as.character(date))},
+            rownames=FALSE,
+            options=list(
+                columnDefs = list(list(className='dt-center', targets="_all")),
+                columns = list(
+                NULL,
+                list(title = 'New Cases'),
+                list(title = 'Per 100k'),
+                list(title = 'Rolling Avg'),
+                list(title = 'Daily Change'),
+                list(title = 'Weekly Change')
+                )
+            )
+    )
     
     # BUTTON to LOAD IN NEW DATA - then process accordingly
     observeEvent(input$refresh, {
