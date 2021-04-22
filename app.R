@@ -41,18 +41,19 @@ ui <- fluidPage(
         
         # Show a plot of the generated distribution
         mainPanel(
+            textOutput("report_date"),
             textOutput("today_cases"),
             textOutput("today_rate"),
             textOutput("change_yesterday"),
             textOutput('change_lastweek'),
             plotOutput("case_plot"),
-            tableOutput("utla_table")
+            dataTableOutput("utla_table")
         )
     )
 )
 
-setup_table <-function(x) {
-    x %>% 
+setup_table <-function(df) {
+    df %>% 
         arrange(date) %>% 
         mutate(area_pop = newCasesByPublishDateRollingSum / 
                    newCasesByPublishDateRollingRate,
@@ -72,6 +73,7 @@ setup_table <-function(x) {
                spec_new_cases_per_100=newCasesBySpecimenDate/area_pop) %>% 
         select(date,areaName,contains("new_cases"))
 }
+
 # Define server logic required to draw a histogram
 server <- function(input, output) {
     utla_cases <- reactive({ setup_table(filter(cases_by_utla,
@@ -79,7 +81,14 @@ server <- function(input, output) {
     uk_plot_cases <- reactive({ setup_table(uk_cases) })
     london_plot_cases <- reactive({ setup_table(london_cases) })
     #TODO: Switch to most recent date depending on specimen or pub date
-    today_cases <- reactive({tail(utla_cases(),1)})
+    today_cases <- reactive({
+        utla_cases() %>% 
+            select(c(date,starts_with(input$date_type))) %>% 
+            rename_with(~gsub(paste0(input$date_type,"_"),"",.),
+                        starts_with(input$date_type)) %>% 
+            drop_na(new_cases_rate_day) %>% 
+            tail(1)
+            })
     # TODO: Switch plot based on specimen date or pub date
     # TODO: Make interactive
     output$case_plot <- renderPlot({
@@ -108,27 +117,35 @@ server <- function(input, output) {
             theme(axis.text.x=element_text(angle=90),
                   legend.position="bottom") 
     })
+    output$report_date <- renderText({
+        sprintf("Report Date: %s", 
+                format(today_cases()$date,"%Y-%m-%d"))
+    })
     output$today_cases <- renderText({
-        sprintf("Cases: %d",today_cases()$pub_new_cases)
+        sprintf("Cases: %d",today_cases()$new_cases)
     })
     output$today_rate <- renderText({
-        sprintf("Rate: %6.1f",today_cases()$pub_new_cases_rate_day)
+        sprintf("Rate: %6.1f",today_cases()$new_cases_rate_day)
     })
     output$change_yesterday <- renderText({
         sprintf("Rate change from yesterday: %5.1f %%",
-                100*today_cases()$pub_new_cases_change_day)
+                100*today_cases()$new_cases_change_day)
     })
     output$change_lastweek <- renderText({
         sprintf("Rate change from last week: %5.1f %%",
-                100*today_cases()$pub_new_cases_change_week)
+                100*today_cases()$new_cases_change_week)
     })
     #TODO: Clean up table
-    output$utla_table <-renderTable({utla_cases() %>% 
-            arrange(desc(date)) %>% 
+    output$utla_table <-renderDataTable({utla_cases() %>%
+            select(-areaName) %>% 
+            arrange(desc(date)) %>%
+            select(c(date,starts_with(input$date_type))) %>% 
+            rename_with(~gsub(paste0(input$date_type,"_"),"",.),
+                        starts_with(input$date_type)) %>% 
+            drop_na(new_cases_rate_day) %>% 
             mutate(date=as.character(date))})
     
     # BUTTON to LOAD IN NEW DATA - then process accordingly
-    # TODO: Grab national and London data 
     observeEvent(input$refresh, {
         url_root <- "https://api.coronavirus.data.gov.uk/v2/data?"
         area_type <- "areaType=utla&"
@@ -144,6 +161,7 @@ server <- function(input, output) {
         r <- GET(paste0(url_root,area_type,metric_string))
         london_cases <<- content(r) 
         write_csv(london_cases,"data/london_cases.csv")
+        # This should trigger a
     })
 }
 
