@@ -96,21 +96,16 @@ server <- function(input, output) {
                               uk_plot_cases(),
                               london_plot_cases()) %>% 
             filter(date >= input$date_range[1],
-                   date <= input$date_range[2])
-        if (input$date_type == "pub") {
-            plt <- ggplot(data=combined,aes(x=date)) + 
+                   date <= input$date_range[2]) %>% 
+            select(c(date,areaName,starts_with(input$date_type))) %>% 
+            rename_with(~gsub(paste0(input$date_type,"_"),"",.),
+                        starts_with(input$date_type)) %>% 
+            drop_na(new_cases_rate_day)
+        plt <- ggplot(data=combined,aes(x=date)) + 
                 geom_col(data=combined %>% filter(areaName==input$utla),
-                         aes(y=pub_new_cases_per_100),alpha=0.5) + 
-                geom_line(aes(y=pub_new_cases_rate_day, 
+                         aes(y=new_cases_per_100),alpha=0.5) + 
+                geom_line(aes(y=new_cases_rate_day, 
                           colour=areaName))
-        }
-        else {
-            plt <- ggplot(data=combined,aes(x=date)) + 
-                geom_col(data=combined %>% filter(areaName==input$utla),
-                         aes(y=spec_new_cases_per_100),alpha=0.5) + 
-                geom_line(aes(y=spec_new_cases_rate_day, 
-                          colour=areaName))
-        }
         plt + scale_x_date("Date",date_breaks="1 week") + 
             labs(y="New cases per 100k population",
                  x="Date") + theme_minimal() +
